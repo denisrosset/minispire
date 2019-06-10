@@ -3,9 +3,7 @@ import ReleaseTransformations._
 import sbtcrossproject.{CrossType, crossProject}
 
 lazy val scalaVersions: Map[String, String] =
-  Map("2.11" -> "2.11.12", "2.12" -> "2.12.8", "2.13" -> "2.13.0-RC1")
-
-lazy val algebraVersion = "2.0.0-M1"
+  Map("2.11" -> "2.11.12", "2.12" -> "2.12.8", "2.13" -> "2.13.0")
 
 // Projects
 
@@ -20,15 +18,15 @@ lazy val spireJVM = project.in(file(".spireJVM"))
   .settings(moduleName := "spire-aggregate")
   .settings(spireSettings)
   .settings(noPublishSettings)
-  .aggregate(macrosJVM, coreJVM, dataJVM, legacyJVM, platformJVM, utilJVM)
-  .dependsOn(macrosJVM, coreJVM, dataJVM, legacyJVM, platformJVM, utilJVM)
+  .aggregate(macrosJVM, coreJVM, platformJVM)
+  .dependsOn(macrosJVM, coreJVM, platformJVM)
 
 lazy val spireJS = project.in(file(".spireJS"))
   .settings(moduleName := "spire-aggregate")
   .settings(spireSettings)
   .settings(noPublishSettings)
-  .aggregate(macrosJS, coreJS, dataJS, legacyJS, platformJS, utilJS)
-  .dependsOn(macrosJS, coreJS, dataJS, legacyJS, platformJS, utilJS)
+  .aggregate(macrosJS, coreJS, platformJS)
+  .dependsOn(macrosJS, coreJS, platformJS)
   .enablePlugins(ScalaJSPlugin)
 
 lazy val platform = crossProject(JSPlatform, JVMPlatform)
@@ -37,7 +35,7 @@ lazy val platform = crossProject(JSPlatform, JVMPlatform)
   .settings(crossVersionSharedSources:_*)
   .jvmSettings(commonJvmSettings:_*)
   .jsSettings(commonJsSettings:_*)
-  .dependsOn(macros, util)
+  .dependsOn(macros)
 
 lazy val platformJVM = platform.jvm
 lazy val platformJS = platform.js
@@ -52,37 +50,6 @@ lazy val macros = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure
 lazy val macrosJVM = macros.jvm
 lazy val macrosJS = macros.js
 
-lazy val data = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
-  .settings(moduleName := "spire-data")
-  .settings(spireSettings:_*)
-  .settings(crossVersionSharedSources:_*)
-  .jvmSettings(commonJvmSettings:_*)
-  .jsSettings(commonJsSettings:_*)
-
-lazy val dataJVM = data.jvm
-lazy val dataJS = data.js
-
-lazy val legacy = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
-  .settings(moduleName := "spire-legacy")
-  .settings(spireSettings:_*)
-  .settings(crossVersionSharedSources:_*)
-  .jvmSettings(commonJvmSettings:_*)
-  .jsSettings(commonJsSettings:_*)
-
-lazy val legacyJVM = legacy.jvm
-lazy val legacyJS = legacy.js
-
-lazy val util = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
-  .settings(moduleName := "spire-util")
-  .settings(spireSettings:_*)
-  .settings(crossVersionSharedSources:_*)
-  .jvmSettings(commonJvmSettings:_*)
-  .jsSettings(commonJsSettings:_*)
-  .dependsOn(macros)
-
-lazy val utilJVM = util.jvm
-lazy val utilJS = util.js
-
 lazy val core = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
   .settings(moduleName := "spire")
   .settings(spireSettings:_*)
@@ -91,7 +58,7 @@ lazy val core = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
   .enablePlugins(BuildInfoPlugin)
   .jvmSettings(commonJvmSettings:_*)
   .jsSettings(commonJsSettings:_*)
-  .dependsOn(macros, platform, util)
+  .dependsOn(macros, platform)
 
 lazy val coreJVM = core.jvm
 lazy val coreJS = core.js
@@ -109,8 +76,7 @@ lazy val buildSettings = Seq(
   }
 )
 
-lazy val commonDeps = Seq(libraryDependencies ++= Seq(
-  "org.typelevel" %%% "algebra" % algebraVersion))
+lazy val commonDeps = Seq()
 
 lazy val commonSettings = Seq(
   scalacOptions ++= commonScalacOptions.value.diff(Seq(
@@ -121,7 +87,7 @@ lazy val commonSettings = Seq(
     "-Ywarn-value-discard"
   )),
   resolvers += Resolver.sonatypeRepo("snapshots")
-) ++ scalaMacroDependencies ++ warnUnusedImport
+) ++ scalaMacroDependencies
 
 lazy val commonJsSettings = Seq(
   scalaJSStage in Global := FastOptStage,
@@ -224,11 +190,6 @@ lazy val commonScalacOptions = Def.setting(
     "-language:implicitConversions",
     "-language:experimental.macros",
     "-unchecked",
-    "-Xfatal-warnings",
-    "-Xlint",
-    "-Ywarn-dead-code",
-    "-Ywarn-numeric-widen",
-    "-Ywarn-value-discard",
     "-Xfuture"
   )
 )
@@ -262,20 +223,6 @@ lazy val sharedReleaseProcess = Seq(
     commitNextVersion,
     releaseStepCommand("sonatypeReleaseAll"),
     pushChanges)
-)
-
-lazy val warnUnusedImport = Seq(
-  scalacOptions ++= {
-    CrossVersion.partialVersion(scalaVersion.value) match {
-      case Some((2, 10)) =>
-        Seq()
-      case Some((2, n)) if ((n >= 11) && (n <= 12)) =>
-        Seq("-Ywarn-unused-import")
-      case _ => Seq()
-    }
-  },
-  scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
-  scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value
 )
 
 // For Travis CI - see http://www.cakesolutions.net/teamblogs/publishing-artefacts-to-oss-sonatype-nexus-using-sbt-and-travis-ci
