@@ -1,65 +1,51 @@
 import ReleaseTransformations._
-
-import sbtcrossproject.{CrossType, crossProject}
+import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 
 lazy val scalaVersions: Map[String, String] =
-  Map("2.11" -> "2.11.12", "2.12" -> "2.12.8", "2.13" -> "2.13.0")
+  Map("2.11" -> "2.11.12", "2.12" -> "2.12.8", "2.13" -> "2.13.0-RC3")
 
 // Projects
 
 lazy val spire = project.in(file("."))
-  .settings(moduleName := "minispire-root")
-  .settings(spireSettings)
-  .settings(noPublishSettings)
-  .aggregate(spireJVM, spireJS)
-  .dependsOn(spireJVM, spireJS)
+    .settings(moduleName := "minispire-root")
+    .settings(spireSettings)
+    .settings(noPublishSettings)
+    .aggregate(macrosJVM, coreJVM, macrosJS, coreJS)
 
-lazy val spireJVM = project.in(file(".spireJVM"))
-  .settings(moduleName := "minispire-aggregate")
-  .settings(spireSettings)
-  .settings(noPublishSettings)
-  .aggregate(macrosJVM, coreJVM)
-  .dependsOn(macrosJVM, coreJVM)
-
-lazy val spireJS = project.in(file(".spireJS"))
-  .settings(moduleName := "minispire-aggregate")
-  .settings(spireSettings)
-  .settings(noPublishSettings)
-  .aggregate(macrosJS, coreJS)
-  .dependsOn(macrosJS, coreJS)
-  .enablePlugins(ScalaJSPlugin)
-
-lazy val macros = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
-  .settings(moduleName := "minispire-macros")
-  .settings(spireSettings:_*)
-  .settings(crossVersionSharedSources:_*)
-  .jvmSettings(commonJvmSettings:_*)
-  .jsSettings(commonJsSettings:_*)
+lazy val macros =
+  crossProject(JVMPlatform, JSPlatform, NativePlatform)
+    .crossType(CrossType.Pure)
+    .in(file("macros"))
+    .settings(moduleName := "minispire-macros")
+    .settings(spireSettings:_*)
+    .jvmSettings(commonJvmSettings:_*)
+    .jsSettings(commonJsSettings:_*)
+    .nativeSettings(commonNativeSettings:_*)
 
 lazy val macrosJVM = macros.jvm
 lazy val macrosJS = macros.js
+lazy val macrosNative = macros.native
 
-lazy val core = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
-  .settings(moduleName := "minispire")
-  .settings(spireSettings:_*)
-  .settings(coreSettings:_*)
-  .settings(crossVersionSharedSources:_*)
-  .jvmSettings(commonJvmSettings:_*)
-  .jsSettings(commonJsSettings:_*)
-  .dependsOn(macros)
+lazy val core =
+  crossProject(JVMPlatform, JSPlatform, NativePlatform)
+    .crossType(CrossType.Pure)
+    .in(file("core"))
+    .settings(moduleName := "minispire")
+    .settings(spireSettings:_*)
+    .jvmSettings(commonJvmSettings:_*)
+    .jsSettings(commonJsSettings:_*)
+    .nativeSettings(commonNativeSettings:_*)
+    .dependsOn(macros)
 
 lazy val coreJVM = core.jvm
 lazy val coreJS = core.js
+lazy val coreNative = core.native
 
 // General settings
 
 lazy val buildSettings = Seq(
-  organization := "org.typelevel",
-  scalaVersion := scalaVersions("2.12"),
-  crossScalaVersions := Seq(scalaVersions("2.11"), scalaVersions("2.12"), scalaVersions("2.13")),
+  organization := "org.typelevel"
 )
-
-lazy val commonDeps = Seq()
 
 lazy val commonSettings = Seq(
   scalacOptions ++= commonScalacOptions.value.diff(Seq(
@@ -74,7 +60,9 @@ lazy val commonSettings = Seq(
 
 lazy val commonJsSettings = Seq(
   scalaJSStage in Global := FastOptStage,
-  parallelExecution in Test := false
+  parallelExecution in Test := false,
+  scalaVersion := scalaVersions("2.13"),
+  crossScalaVersions := Seq(scalaVersions("2.11"), scalaVersions("2.12"), scalaVersions("2.13"))
 )
 
 lazy val commonJvmSettings = Seq(
@@ -83,7 +71,14 @@ lazy val commonJvmSettings = Seq(
   scalacOptions ++= (CrossVersion.partialVersion(scalaVersion.value) match {
     case Some((2, scalaMajor)) if scalaMajor <= 11 => Seq("-optimize")
     case _ => Seq.empty
-  })
+  }),
+  scalaVersion := scalaVersions("2.13"),
+  crossScalaVersions := Seq(scalaVersions("2.11"), scalaVersions("2.12"), scalaVersions("2.13"))
+)
+
+lazy val commonNativeSettings = Seq(
+  scalaVersion := scalaVersions("2.11"),
+  crossScalaVersions := Seq(scalaVersions("2.11"))
 )
 
 lazy val publishSettings = Seq(
@@ -108,10 +103,7 @@ lazy val publishSettings = Seq(
   )
 )
 
-lazy val coreSettings = Seq(
-)
-
-lazy val spireSettings = buildSettings ++ commonSettings ++ commonDeps ++ publishSettings
+lazy val spireSettings = buildSettings ++ commonSettings ++ publishSettings
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Base Build Settings - Should not need to edit below this line.
@@ -124,21 +116,6 @@ lazy val noPublishSettings = Seq(
   publishLocal := (()),
   publishArtifact := false
 )
-
-lazy val crossVersionSharedSources: Seq[Setting[_]] =
-  Seq(Compile, Test).map { sc =>
-    (unmanagedSourceDirectories in sc) ++= {
-      (unmanagedSourceDirectories in sc ).value.map {
-        dir:File =>
-          CrossVersion.partialVersion(scalaBinaryVersion.value) match {
-            case Some((major, minor)) =>
-              new File(s"${dir.getPath}_$major.$minor")
-            case None =>
-              sys.error("couldn't parse scalaBinaryVersion ${scalaBinaryVersion.value}")
-          }
-      }
-    }
-  }
 
 lazy val scalaMacroDependencies: Seq[Setting[_]] = Seq(
   libraryDependencies += scalaOrganization.value % "scala-reflect" % scalaVersion.value % "provided"
