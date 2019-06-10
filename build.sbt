@@ -118,7 +118,8 @@ lazy val spireSettings = buildSettings ++ commonSettings ++ publishSettings
 lazy val noPublishSettings = Seq(
   publish := (()),
   publishLocal := (()),
-  publishArtifact := false
+  publishArtifact := false,
+  bintrayRelease := (())
 )
 
 lazy val scalaMacroDependencies: Seq[Setting[_]] = Seq(
