@@ -1,6 +1,8 @@
 package spire
 package math
 
+import java.lang.Math
+
 object FloatComplex {
   import FastComplex.{encode}
 
@@ -9,9 +11,6 @@ object FloatComplex {
 
   final def apply(real: Double, imag: Double): FloatComplex =
     new FloatComplex(encode(real.toFloat, imag.toFloat))
-
-  def polar(magnitude: Float, angle: Float): FloatComplex =
-    new FloatComplex(FastComplex.polar(magnitude, angle))
 
   final val i: FloatComplex = new FloatComplex(4575657221408423936L)
   final val one: FloatComplex = new FloatComplex(1065353216L)
@@ -30,8 +29,6 @@ class FloatComplex(val u: Long) extends AnyVal {
   final def real: Float = FastComplex.real(u)
   final def imag: Float = FastComplex.imag(u)
   final def repr: String = "FloatComplex(%s, %s)" format(real, imag)
-  final def abs: Float = FastComplex.abs(u)
-  final def angle: Float = FastComplex.angle(u)
   final def conjugate: FloatComplex = new FloatComplex(FastComplex.conjugate(u))
   final def isWhole: Boolean = FastComplex.isWhole(u)
   final def signum: Int = FastComplex.signum(u)
@@ -42,21 +39,6 @@ class FloatComplex(val u: Long) extends AnyVal {
   final def -(b: FloatComplex): FloatComplex = new FloatComplex(FastComplex.subtract(u, b.u))
   final def *(b: FloatComplex): FloatComplex = new FloatComplex(FastComplex.multiply(u, b.u))
   final def /(b: FloatComplex): FloatComplex = new FloatComplex(FastComplex.divide(u, b.u))
-
-  /* TODO: does it make sense? Should match the behavior on Gaussian integers.
-final def /~(b: FloatComplex): FloatComplex = new FloatComplex(FastComplex.quot(u, b.u))
-final def %(b: FloatComplex): FloatComplex = new FloatComplex(FastComplex.mod(u, b.u))
-
-final def /%(b: FloatComplex): (FloatComplex, FloatComplex) = FastComplex.quotmod(u, b.u) match {
-  case (q, m) => (new FloatComplex(q), new FloatComplex(m))
-}
-   */
-
-  final def pow(b: FloatComplex): FloatComplex = new FloatComplex(FastComplex.pow(u, b.u))
-  final def **(b: FloatComplex): FloatComplex = pow(b)
-
-  final def pow(b: Int): FloatComplex = new FloatComplex(FastComplex.pow(u, FastComplex(b.toFloat, 0.0F)))
-  final def **(b: Int): FloatComplex = pow(b)
 }
 
 
@@ -117,25 +99,11 @@ object FastComplex {
   @inline final def encode(real: Float, imag: Float): Long =
     (bits(real) & 0xffffffffL) | ((bits(imag) & 0xffffffffL) << 32)
 
-  // encode two floats representing a complex number in polar form
-  @inline final def polar(magnitude: Float, angle: Float): Long =
-    encode(magnitude * cos(angle).toFloat, magnitude * sin(angle).toFloat)
-
   // decode should be avoided in fast code because it allocates a Tuple2.
   final def decode(d: Long): (Float, Float) = (real(d), imag(d))
 
   // produces a string representation of the Long/(Float,Float)
   final def toRepr(d: Long): String = "FastComplex(%s -> %s)" format(d, decode(d))
-
-  // get the magnitude/absolute value
-  final def abs(d: Long): Float = {
-    val re = real(d)
-    val im = imag(d)
-    java.lang.Math.sqrt(re * re + im * im).toFloat
-  }
-
-  // get the angle/argument
-  final def angle(d: Long): Float = atan2(imag(d), real(d)).toFloat
 
   // get the complex conjugate
   final def conjugate(d: Long): Long = encode(real(d), -imag(d))
@@ -148,7 +116,7 @@ object FastComplex {
 
   // get the complex sign of the complex number
   final def complexSignum(d: Long): Long = {
-    val m = abs(d)
+    val m = Math.abs(d)
     if (m == 0.0F) zero else divide(d, encode(m, 0.0F))
   }
 
@@ -194,37 +162,4 @@ object FastComplex {
     }
   }
 
-  /* TODO: does it make sense? Should match the behvaior on Gaussian integers
-   final def quot(a: Long, b: Long): Long =
-    encode(Math.floor(real(divide(a, b))).toFloat, 0.0F)
-
-  final def mod(a: Long, b: Long): Long = subtract(a, multiply(b, quot(a, b)))
-
-  final def quotmod(a: Long, b: Long): (Long, Long) = {
-    val q = quot(a, b)
-    (q, subtract(a, multiply(b, quot(a, b))))
-  }
-   */
-
-  // exponentiation
-  final def pow(a: Long, b: Long): Long = if (b == zero) {
-    encode(1.0F, 0.0F)
-
-  } else if (a == zero) {
-    if (imag(b) != 0.0F || real(b) < 0.0F)
-      throw new Exception("raising 0 to negative/complex power")
-    zero
-
-  } else if (imag(b) != 0.0F) {
-    val im_b = imag(b)
-    val re_b = real(b)
-    val len = (Math.pow(abs(a), re_b) / exp((angle(a) * im_b))).toFloat
-    val phase = (angle(a) * re_b + log(abs(a)) * im_b).toFloat
-    polar(len, phase)
-
-  } else {
-    val len = Math.pow(abs(a), real(b)).toFloat
-    val phase = (angle(a) * real(b)).toFloat
-    polar(len, phase)
-  }
 }

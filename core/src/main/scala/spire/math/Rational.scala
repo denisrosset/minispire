@@ -2,16 +2,14 @@ package spire
 package math
 
 import scala.math.{ScalaNumber, ScalaNumericConversions}
+import java.math.{BigInteger, MathContext, RoundingMode, BigDecimal => JBigDecimal}
 
-import java.math.{BigDecimal => JBigDecimal, BigInteger, MathContext, RoundingMode}
-
-import spire.algebra.{Eq, Field, IsRational, NRoot, Sign, TruncatedDivisionCRing}
-import spire.algebra.Sign.{ Positive, Zero, Negative }
+import spire.algebra.{Eq, Field, Order}
 import spire.macros.Checked
 import spire.std.long.LongAlgebra
 import spire.std.double._
-import spire.syntax.nroot._
-import spire.util.Opt
+
+import scala.annotation.tailrec
 
 //scalastyle:off equals.hash.code
 sealed abstract class Rational extends ScalaNumber with ScalaNumericConversions with Ordered[Rational] { lhs =>
@@ -55,71 +53,6 @@ sealed abstract class Rational extends ScalaNumber with ScalaNumericConversions 
 
   def %(rhs: Rational): Rational = Rational.zero // TODO: this is for the Auto macro example to work
 
-  def tquot(rhs: Rational): Rational = Rational(SafeLong((this / rhs).toBigInt), SafeLong.one)
-  def tmod(rhs: Rational): Rational = this - (this tquot rhs) * rhs
-  def tquotmod(rhs: Rational): (Rational, Rational) = {
-    val q = this tquot rhs
-    (q, this - q * rhs)
-  }
-
-  def lcm(rhs: Rational): Rational =
-    if (lhs.isZero || rhs.isZero) Rational.zero
-    else (lhs / (lhs gcd rhs)) * rhs
-
-  def gcd(rhs: Rational): Rational =
-    // a few shortcuts (that are correctly handled by the generic algorithm anyhow)
-    if (lhs.isZero) rhs.abs
-    else if (rhs.isZero) lhs.abs
-    else if (lhs.isOne && rhs.isOne) lhs
-    else {
-      // now the generic algorithm
-      // stores either the new numerator as a Long or SafeLong
-      var newNumAsLong = 0L
-      // when the new numerator is a Long, the Opt is empty, otherwise
-      // it contains the new SafeLong numerator
-      var newNumAsSafeLong: Opt[SafeLong] = Opt.empty[SafeLong]
-      if (lhs.numeratorAbsIsValidLong && rhs.numeratorAbsIsValidLong)
-        newNumAsLong = spire.math.gcd(lhs.numeratorAsLong, rhs.numeratorAsLong)
-      else {
-        val newNum = lhs.numerator.gcd(rhs.numerator)
-        if (newNum.isValidLong)
-          newNumAsLong = newNum.toLong
-        else
-          newNumAsSafeLong = Opt(newNum)
-      }
-      if (lhs.denominatorAbsIsValidLong && rhs.denominatorAbsIsValidLong) {
-        val ld = lhs.denominatorAsLong
-        val rd = rhs.denominatorAsLong
-        val dengcd = spire.math.gcd(ld, rd)
-        val tmp = ld / dengcd // fits in Long
-                              // Checked does not like Opt.unapply, so we use isEmpty/get
-        Checked.tryOrElse {
-          val newDenAsLong = tmp * rd
-          if (newNumAsSafeLong.isEmpty)
-            Rational(newNumAsLong, newDenAsLong)
-          else
-            Rational(newNumAsSafeLong.get, SafeLong(newDenAsLong))
-        } {
-          val newDenAsSafeLong = SafeLong(tmp) * rd
-          // Checked does not like Opt.unapply
-          if (newNumAsSafeLong.isEmpty)
-            Rational(SafeLong(newNumAsLong), newDenAsSafeLong)
-          else
-            Rational(newNumAsSafeLong.get, newDenAsSafeLong)
-        }
-      } else {
-        val newDenAsSafeLong = lhs.denominator.lcm(rhs.denominator)
-        newNumAsSafeLong match {
-          case Opt(sl) => Rational(sl, newDenAsSafeLong)
-          case _ => Rational(SafeLong(newNumAsLong), newDenAsSafeLong)
-        }
-      }
-    }
-
-  def toReal: Real = Real(this)
-
-  def toAlgebraic: Algebraic = Algebraic(this)
-
   def toBigDecimal(scale: Int, mode: RoundingMode): BigDecimal = {
     val n = new JBigDecimal(numerator.toBigInteger)
     val d = new JBigDecimal(denominator.toBigInteger)
@@ -144,8 +77,6 @@ sealed abstract class Rational extends ScalaNumber with ScalaNumericConversions 
   def roundTo(denom: SafeLong): Rational = (this * denom).round / denom
 
   def pow(exp: Int): Rational
-
-  def sign: Sign = Sign(signum)
 
   def compareToOne: Int
 
@@ -215,8 +146,8 @@ sealed abstract class Rational extends ScalaNumber with ScalaNumericConversions 
   def limitDenominatorTo(limit: SafeLong): Rational = {
     require(limit.signum > 0, "Cannot limit denominator to non-positive number.")
 
-    def nextK(curr: Opt[SafeLong]): Opt[SafeLong] =
-      if (curr.isEmpty) Opt(SafeLong(2)) else Opt(curr.get * 2)
+    def nextK(curr: Option[SafeLong]): Option[SafeLong] =
+      if (curr.isEmpty) Some(SafeLong(2)) else Some(curr.get * 2)
 
     // This implements the basic mediant algorithm. However, we adapt it in 1
     // way - by allowing an exponentially growing multiplier for either the
@@ -232,51 +163,49 @@ sealed abstract class Rational extends ScalaNumber with ScalaNumericConversions 
     // need log n.
 
     @tailrec
-    def closest(l: Rational, u: Rational, lk: Opt[SafeLong], rk: Opt[SafeLong]): Rational = {
+    def closest(l: Rational, u: Rational, lk: Option[SafeLong], rk: Option[SafeLong]): Rational = {
       val mediant = (lk.nonEmpty, rk.nonEmpty) match {
         case (true, false) => Rational(lk.get * l.numerator + u.numerator, lk.get * l.denominator + u.denominator)
         case (false, true) => Rational(l.numerator + rk.get * u.numerator, l.denominator + rk.get * u.denominator)
         case _ => Rational(l.numerator + u.numerator, l.denominator + u.denominator)
       }
       if (mediant.denominator > limit) {
-        if (lk.nonEmpty || rk.nonEmpty) closest(l, u, Opt.empty, Opt.empty)
+        if (lk.nonEmpty || rk.nonEmpty) closest(l, u, None, None)
         else if ((this - l).abs > (u - this).abs) u
         else l
       } else if (mediant == this) {
         mediant
       } else if (mediant < this) {
-        closest(mediant, u, Opt.empty, nextK(rk))
+        closest(mediant, u, None, nextK(rk))
       } else {
-        closest(l, mediant, nextK(lk), Opt.empty)
+        closest(l, mediant, nextK(lk), None)
       }
     }
 
     // note: a rational with a zero denominator is not allowed. But for this algorithm it is quite convenient. So we
     // bypass the factory method and call the constructor directly.
     import Rational.LongRational
-    this.sign match {
-      case Zero => this
-      case Positive => closest(Rational(this.toBigInt), new LongRational(1, 0), Opt.empty, Opt.empty)
-      case Negative => closest(new LongRational(-1, 0), Rational(this.toBigInt), Opt.empty, Opt.empty)
+    this.signum match {
+      case 0 => this
+      case i if i > 0 => closest(Rational(this.toBigInt), new LongRational(1, 0), None, None)
+      case _ => closest(new LongRational(-1, 0), Rational(this.toBigInt), None, None)
     }
   }
 
   override def equals(that: Any): Boolean = that match {
-    case that: Real => this == that.toRational
-    case that: Algebraic => that == this
     case that: BigInt => isWhole && toBigInt == that
     case that: BigDecimal => try { toBigDecimal(that.mc) == that } catch { case ae: ArithmeticException => false }
     case that: SafeLong => SafeLong(toBigInt) == that
-    case that: Number => Number(this) == that
-    case that: Natural => isWhole && this == Rational(that.toBigInt)
-    case that: Complex[_] => that == this
-    case that: Quaternion[_] => that == this
+//    case that: Complex[_] => that == this
     case that: Long => isValidLong && toLong == that
     case that => unifiedPrimitiveEquals(that)
   }
 }
 
-object Rational extends RationalInstances {
+object Rational {
+
+  implicit final val algebra: Order[Rational] with Field[Rational] = new RationalAlgebra
+
   private val RationalString = """^(-?\d+)/(-?\d+)$""".r
   private val IntegerString = """^(-?\d+)$""".r
 
@@ -319,7 +248,7 @@ object Rational extends RationalInstances {
 
   def apply(n: Long, d: Long): Rational = {
     def build0(n: Long, d: Long) = if (n == 0L) zero else {
-      val divisor = spire.math.gcd(n, d)
+      val divisor = SafeLong.gcd(n, d)
       if (divisor == 1L)
         longRational(n, d)
       else
@@ -407,13 +336,6 @@ object Rational extends RationalInstances {
       case x:SafeLongBigInteger => bigRational(x, SafeLong.one)
     }
 
-  implicit def apply(x: Number): Rational = x match {
-    case RationalNumber(n) => n
-    case IntNumber(n) => apply(n)
-    case FloatNumber(n) => apply(n)
-    case DecimalNumber(n) => apply(n)
-  }
-
   @SerialVersionUID(0L)
   private final class LongRational(val n: Long, val d: Long) extends Rational with Serializable {
     def numerator: SafeLong = SafeLong(n)
@@ -460,7 +382,7 @@ object Rational extends RationalInstances {
 
     def +(r: Rational): Rational = r match {
       case r: LongRational =>
-        val dgcd: Long = spire.math.gcd(d, r.d)
+        val dgcd: Long = SafeLong.gcd(d, r.d)
         if (dgcd == 1L) {
           Checked.tryOrReturn[Rational] {
             Rational(n * r.d + r.n * d, d * r.d)
@@ -475,7 +397,7 @@ object Rational extends RationalInstances {
           Checked.tryOrReturn {
             val num: Long = n * rden + r.n * lden
 
-            val ngcd: Long = spire.math.gcd(num, dgcd)
+            val ngcd: Long = SafeLong.gcd(num, dgcd)
 
             if (ngcd == 1L)
               Rational(num, lden * r.d)
@@ -484,7 +406,7 @@ object Rational extends RationalInstances {
           } {
             val num: SafeLong = SafeLong(n) * rden + SafeLong(r.n) * lden
 
-            val ngcd: Long = spire.math.gcd(dgcd, (num % dgcd).toLong)
+            val ngcd: Long = SafeLong.gcd(dgcd, (num % dgcd).toLong)
 
             if (ngcd == 1L)
               Rational(num, SafeLong(lden) * r.d)
@@ -493,7 +415,7 @@ object Rational extends RationalInstances {
           }
         }
       case r: BigRational =>
-        val dgcd: Long = spire.math.gcd(d, (r.d % d).toLong)
+        val dgcd: Long = SafeLong.gcd(d, (r.d % d).toLong)
         if (dgcd == 1L) {
 
           val num = r.d * n + r.n * d
@@ -506,8 +428,8 @@ object Rational extends RationalInstances {
           val rden: SafeLong = r.d / dgcd
           val num: SafeLong = rden * n + r.n * lden
           val ngcd: Long = num match {
-            case SafeLongLong(x) => spire.math.gcd(x, dgcd)
-            case SafeLongBigInteger(x) => spire.math.gcd(dgcd, (x mod BigInteger.valueOf(dgcd)).longValue)
+            case SafeLongLong(x) => SafeLong.gcd(x, dgcd)
+            case SafeLongBigInteger(x) => SafeLong.gcd(dgcd, (x mod BigInteger.valueOf(dgcd)).longValue)
           }
 
           if (ngcd == 1L)
@@ -520,7 +442,7 @@ object Rational extends RationalInstances {
 
     def -(r: Rational): Rational = r match {
       case r: LongRational =>
-        val dgcd: Long = spire.math.gcd(d, r.d)
+        val dgcd: Long = SafeLong.gcd(d, r.d)
         if (dgcd == 1L) {
           Checked.tryOrReturn[Rational] {
             Rational(n * r.d - r.n * d, d * r.d)
@@ -535,7 +457,7 @@ object Rational extends RationalInstances {
           Checked.tryOrReturn {
             val num: Long = n * rden - r.n * lden
 
-            val ngcd: Long = spire.math.gcd(num, dgcd)
+            val ngcd: Long = SafeLong.gcd(num, dgcd)
 
             if (ngcd == 1L)
               Rational(num, lden * r.d)
@@ -544,7 +466,7 @@ object Rational extends RationalInstances {
           } {
             val num: SafeLong = SafeLong(n) * rden - SafeLong(r.n) * lden
 
-            val ngcd: Long = spire.math.gcd(dgcd, (num % dgcd).toLong)
+            val ngcd: Long = SafeLong.gcd(dgcd, (num % dgcd).toLong)
 
             if (ngcd == 1L)
               Rational(num, SafeLong(lden) * r.d)
@@ -553,7 +475,7 @@ object Rational extends RationalInstances {
           }
         }
       case r: BigRational =>
-        val dgcd: Long = spire.math.gcd(d, (r.d % d).toLong)
+        val dgcd: Long = SafeLong.gcd(d, (r.d % d).toLong)
         if (dgcd == 1L) {
 
           val num = r.d * n - r.n * d
@@ -566,8 +488,8 @@ object Rational extends RationalInstances {
           val rden: SafeLong = r.d / dgcd
           val num: SafeLong = rden * n - r.n * lden
           val ngcd: Long = num match {
-            case SafeLongLong(x) => spire.math.gcd(x, dgcd)
-            case SafeLongBigInteger(x) => spire.math.gcd(dgcd, (x mod BigInteger.valueOf(dgcd)).longValue)
+            case SafeLongLong(x) => SafeLong.gcd(x, dgcd)
+            case SafeLongBigInteger(x) => SafeLong.gcd(dgcd, (x mod BigInteger.valueOf(dgcd)).longValue)
           }
 
           if (ngcd == 1L)
@@ -581,8 +503,8 @@ object Rational extends RationalInstances {
 
     def *(r: Rational): Rational = if (n == 0L) Rational.zero else r match {
       case r: LongRational =>
-        val a = spire.math.gcd(n, r.d)
-        val b = spire.math.gcd(d, r.n)
+        val a = SafeLong.gcd(n, r.d)
+        val b = SafeLong.gcd(d, r.n)
         // this does not have to happen within the checked block, since the divisions are guaranteed to work
         val n1 = n / a
         val n2 = r.n / b
@@ -596,8 +518,8 @@ object Rational extends RationalInstances {
           bigRational(SafeLong(n1) * n2, SafeLong(d1) * d2)
         }
       case r: BigRational =>
-        val a = spire.math.gcd(n, (r.d % n).toLong)
-        val b = spire.math.gcd(d, (r.n % d).toLong)
+        val a = SafeLong.gcd(n, (r.d % n).toLong)
+        val b = SafeLong.gcd(d, (r.n % d).toLong)
         Rational(SafeLong(n / a) * (r.n / b), SafeLong(d / b) * (r.d / a))
     }
 
@@ -607,8 +529,8 @@ object Rational extends RationalInstances {
         // we only have to do this check in the long branch, since 0 is always represented as LongRational(0,1)
         if (r.n == 0L) throw new ArithmeticException("divide (/) by 0")
         if (n == 0L) return this
-        val a = spire.math.gcd(n, r.n)
-        val b = spire.math.gcd(d, r.d)
+        val a = SafeLong.gcd(n, r.n)
+        val b = SafeLong.gcd(d, r.d)
         // this does not have to happen within the checked block, since the divisions are guaranteed to work
         val n1 = n / a
         val n2 = r.n / a
@@ -629,8 +551,8 @@ object Rational extends RationalInstances {
         }
       case r: BigRational =>
         if (n == 0L) return this
-        val a = spire.math.gcd(n, (r.n % n).toLong)
-        val b = spire.math.gcd(d, (r.d % d).toLong)
+        val a = SafeLong.gcd(n, (r.n % n).toLong)
+        val b = SafeLong.gcd(d, (r.d % d).toLong)
         val num = SafeLong(n / a) * (r.d / b)
         val den = SafeLong(d / b) * (r.n / a)
         if (den.signum < 0) Rational(-num, -den) else Rational(num, den)
@@ -669,7 +591,7 @@ object Rational extends RationalInstances {
         Checked.tryOrElse {
           LongAlgebra.compare(n * r.d, r.n * d)
         } {
-          val dgcd = spire.math.gcd(d, r.d)
+          val dgcd = SafeLong.gcd(d, r.d)
           if (dgcd == 1L)
             (SafeLong(n) * r.d) compare (SafeLong(r.n) * d)
           else
@@ -677,7 +599,7 @@ object Rational extends RationalInstances {
         }
 
       case r: BigRational =>
-        val dgcd = spire.math.gcd(d, (r.d % d).toLong)
+        val dgcd = SafeLong.gcd(d, (r.d % d).toLong)
         if (dgcd == 1L)
           (SafeLong(n) * r.d) compare (r.n * d)
         else
@@ -828,7 +750,7 @@ object Rational extends RationalInstances {
 
     def compare(r: Rational): Int = r match {
       case r: LongRational =>
-        val dgcd = spire.math.gcd(r.d, (d % r.d).toLong)
+        val dgcd = SafeLong.gcd(r.d, (d % r.d).toLong)
         if (dgcd == 1L)
           (n * r.d) compare (SafeLong(r.n) * d)
         else
@@ -854,70 +776,20 @@ object Rational extends RationalInstances {
   private def bigRational(n: SafeLong, d: SafeLong): BigRational = new BigRational(n, if(d.isOne) SafeLong.one else d)
 }
 
-trait RationalInstances {
-  implicit final val RationalAlgebra = new RationalAlgebra
-  import NumberTag._
-  implicit final val RationalTag = new LargeTag[Rational](Exact, Rational.zero)
-
-}
-
-/**
- * Used for Fractional[Rational] and Numeric[Rational] to provide
- * approximate sqrt and nroot implementations.
- *
- * These operations occur at Double precision.
- */
-private[math] trait RationalApproximateNRoot extends NRoot[Rational] {
-  def nroot(n: Rational, k: Int): Rational =
-    Rational(n.toDouble nroot k)
-
-  def fpow(n: Rational, k: Rational): Rational =
-    Rational(n.toDouble ** k.toDouble)
-}
-
-private[math] trait RationalIsField extends Field[Rational] {
-  override def gcd(x: Rational, y: Rational)(implicit ev: Eq[Rational]): Rational = x.gcd(y)
-  override def lcm(x: Rational, y: Rational)(implicit ev: Eq[Rational]): Rational = x.lcm(y)
+private[math] final class RationalAlgebra extends Order[Rational] with Field[Rational] {
   override def minus(a:Rational, b:Rational): Rational = a - b
   def negate(a:Rational): Rational = -a
   def one: Rational = Rational.one
   def plus(a:Rational, b:Rational): Rational = a + b
-  override def pow(a:Rational, b:Int): Rational = a.pow(b)
   override def times(a:Rational, b:Rational): Rational = a * b
   def zero: Rational = Rational.zero
   override def fromInt(n: Int): Rational = Rational(n)
-  override def fromDouble(n: Double): Rational = Rational(n)
   def div(a:Rational, b:Rational): Rational = a / b
-}
-
-private[math] trait RationalIsReal extends IsRational[Rational] with TruncatedDivisionCRing[Rational] {
+  def compare(x: Rational, y: Rational): Int = x compare y
   override def eqv(x:Rational, y:Rational): Boolean = x == y
   override def neqv(x:Rational, y:Rational): Boolean = x != y
   override def gt(x: Rational, y: Rational): Boolean = x > y
   override def gteqv(x: Rational, y: Rational): Boolean = x >= y
   override def lt(x: Rational, y: Rational): Boolean = x < y
   override def lteqv(x: Rational, y: Rational): Boolean = x <= y
-  def compare(x: Rational, y: Rational): Int = x compare y
-
-  override def sign(a: Rational): Sign = a.sign
-  override def signum(a: Rational): Int = a.signum
-  override def abs(a: Rational): Rational = a.abs
-
-  def toDouble(r: Rational): Double = r.toDouble
-  def ceil(a:Rational): Rational = a.ceil
-  def floor(a:Rational): Rational = a.floor
-  def round(a:Rational): Rational = a.round
-  def toRational(a: Rational): Rational = a
-  def isWhole(a:Rational): Boolean = a.isWhole
-  def toBigIntOpt(a: Rational): Opt[BigInt] = if (a.isWhole) Opt(a.toBigInt) else Opt.empty[BigInt]
-  def tquot(x: Rational, y: Rational): Rational = x tquot y
-  def tmod(x: Rational, y: Rational): Rational = x tmod y
-  override def tquotmod(x: Rational, y: Rational): (Rational, Rational) = x tquotmod y
 }
-
-@SerialVersionUID(1L)
-class RationalAlgebra
-    extends RationalIsField
-    with RationalIsReal
-//    with RationalIsGcd TODO
-    with Serializable

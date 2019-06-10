@@ -8,40 +8,29 @@ lazy val scalaVersions: Map[String, String] =
 // Projects
 
 lazy val spire = project.in(file("."))
-  .settings(moduleName := "spire-root")
+  .settings(moduleName := "minispire-root")
   .settings(spireSettings)
   .settings(noPublishSettings)
   .aggregate(spireJVM, spireJS)
   .dependsOn(spireJVM, spireJS)
 
 lazy val spireJVM = project.in(file(".spireJVM"))
-  .settings(moduleName := "spire-aggregate")
+  .settings(moduleName := "minispire-aggregate")
   .settings(spireSettings)
   .settings(noPublishSettings)
-  .aggregate(macrosJVM, coreJVM, platformJVM)
-  .dependsOn(macrosJVM, coreJVM, platformJVM)
+  .aggregate(macrosJVM, coreJVM)
+  .dependsOn(macrosJVM, coreJVM)
 
 lazy val spireJS = project.in(file(".spireJS"))
-  .settings(moduleName := "spire-aggregate")
+  .settings(moduleName := "minispire-aggregate")
   .settings(spireSettings)
   .settings(noPublishSettings)
-  .aggregate(macrosJS, coreJS, platformJS)
-  .dependsOn(macrosJS, coreJS, platformJS)
+  .aggregate(macrosJS, coreJS)
+  .dependsOn(macrosJS, coreJS)
   .enablePlugins(ScalaJSPlugin)
 
-lazy val platform = crossProject(JSPlatform, JVMPlatform)
-  .settings(moduleName := "spire-platform")
-  .settings(spireSettings:_*)
-  .settings(crossVersionSharedSources:_*)
-  .jvmSettings(commonJvmSettings:_*)
-  .jsSettings(commonJsSettings:_*)
-  .dependsOn(macros)
-
-lazy val platformJVM = platform.jvm
-lazy val platformJS = platform.js
-
 lazy val macros = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
-  .settings(moduleName := "spire-macros")
+  .settings(moduleName := "minispire-macros")
   .settings(spireSettings:_*)
   .settings(crossVersionSharedSources:_*)
   .jvmSettings(commonJvmSettings:_*)
@@ -51,14 +40,13 @@ lazy val macrosJVM = macros.jvm
 lazy val macrosJS = macros.js
 
 lazy val core = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
-  .settings(moduleName := "spire")
+  .settings(moduleName := "minispire")
   .settings(spireSettings:_*)
   .settings(coreSettings:_*)
   .settings(crossVersionSharedSources:_*)
-  .enablePlugins(BuildInfoPlugin)
   .jvmSettings(commonJvmSettings:_*)
   .jsSettings(commonJsSettings:_*)
-  .dependsOn(macros, platform)
+  .dependsOn(macros)
 
 lazy val coreJVM = core.jvm
 lazy val coreJS = core.js
@@ -69,11 +57,6 @@ lazy val buildSettings = Seq(
   organization := "org.typelevel",
   scalaVersion := scalaVersions("2.12"),
   crossScalaVersions := Seq(scalaVersions("2.11"), scalaVersions("2.12"), scalaVersions("2.13")),
-  unmanagedSourceDirectories in Compile += {
-      val sharedSourceDir = (baseDirectory in ThisBuild).value / "compat/src/main"
-      if (scalaVersion.value.startsWith("2.13.")) sharedSourceDir / "scala-2.13"
-      else sharedSourceDir / "scala-pre-2.13"
-  }
 )
 
 lazy val commonDeps = Seq()
@@ -104,41 +87,29 @@ lazy val commonJvmSettings = Seq(
 )
 
 lazy val publishSettings = Seq(
-  homepage := Some(url("https://typelevel.org/spire/")),
-  licenses += ("MIT", url("http://opensource.org/licenses/MIT")),
-  pomExtra := (
-    <developers>
-      <developer>
-        <id>d_m</id>
-        <name>Erik Osheim</name>
-        <url>http://github.com/non/</url>
-      </developer>
-      <developer>
-        <id>tixxit</id>
-        <name>Tom Switzer</name>
-        <url>http://github.com/tixxit/</url>
-      </developer>
-    </developers>
+  homepage := Some(url("https://github.com/denisrosset/minispire")),
+  licenses += ("MIT", url("https://opensource.org/licenses/MIT")),
+  bintrayRepository := "maven",
+  publishArtifact in Test := false,
+  bintrayReleaseOnPublish in ThisBuild := false,
+  releaseProcess := Seq[ReleaseStep](
+    checkSnapshotDependencies,
+    inquireVersions,
+    runClean,
+    runTest,
+    setReleaseVersion,
+    commitReleaseVersion,
+    tagRelease,
+    publishArtifacts,
+    releaseStepCommand("bintrayRelease"),
+    setNextVersion,
+    commitNextVersion,
+    pushChanges
   )
-) ++ credentialSettings ++ sharedPublishSettings ++ sharedReleaseProcess
-
-lazy val coreSettings = Seq(
-  buildInfoKeys := Seq[BuildInfoKey](version, scalaVersion),
-  buildInfoPackage := "spire",
-  sourceGenerators in Compile += (genProductTypes in Compile).taskValue,
-  genProductTypes := {
-    val scalaSource = (sourceManaged in Compile).value
-    val s = streams.value
-    s.log.info("Generating spire/std/tuples.scala")
-    val algebraSource = ProductTypes.algebraProductTypes
-    val algebraFile = (scalaSource / "spire" / "std" / "tuples.scala").asFile
-    IO.write(algebraFile, algebraSource)
-
-    Seq[File](algebraFile)
-  }
 )
 
-lazy val genProductTypes = TaskKey[Seq[File]]("gen-product-types", "Generates several type classes for Tuple2-22.")
+lazy val coreSettings = Seq(
+)
 
 lazy val spireSettings = buildSettings ++ commonSettings ++ commonDeps ++ publishSettings
 
@@ -147,8 +118,6 @@ lazy val spireSettings = buildSettings ++ commonSettings ++ commonDeps ++ publis
 // These settings could also come from another file or a plugin.
 // The only issue if coming from a plugin is that the Macro lib versions
 // are hard coded, so an overided facility would be required.
-
-addCommandAlias("gitSnapshots", ";set version in ThisBuild := git.gitDescribedVersion.value.get + \"-SNAPSHOT\"")
 
 lazy val noPublishSettings = Seq(
   publish := (()),
@@ -192,43 +161,4 @@ lazy val commonScalacOptions = Def.setting(
     "-unchecked",
     "-Xfuture"
   )
-)
-
-lazy val sharedPublishSettings = Seq(
-  releaseCrossBuild := true,
-  releasePublishArtifactsAction := PgpKeys.publishSigned.value,
-  publishMavenStyle := true,
-  publishArtifact in Test := false,
-  pomIncludeRepository := Function.const(false),
-  publishTo := {
-    val nexus = "https://oss.sonatype.org/"
-    if (isSnapshot.value)
-      Some("Snapshots" at nexus + "content/repositories/snapshots")
-    else
-      Some("Releases" at nexus + "service/local/staging/deploy/maven2")
-  }
-)
-
-lazy val sharedReleaseProcess = Seq(
-  releaseProcess := Seq[ReleaseStep](
-    checkSnapshotDependencies,
-    inquireVersions,
-    runClean,
-    runTest,
-    setReleaseVersion,
-    commitReleaseVersion,
-    tagRelease,
-    publishArtifacts,
-    setNextVersion,
-    commitNextVersion,
-    releaseStepCommand("sonatypeReleaseAll"),
-    pushChanges)
-)
-
-// For Travis CI - see http://www.cakesolutions.net/teamblogs/publishing-artefacts-to-oss-sonatype-nexus-using-sbt-and-travis-ci
-lazy val credentialSettings = Seq(
-  credentials ++= (for {
-    username <- Option(System.getenv().get("SONATYPE_USERNAME"))
-    password <- Option(System.getenv().get("SONATYPE_PASSWORD"))
-  } yield Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", username, password)).toSeq
 )

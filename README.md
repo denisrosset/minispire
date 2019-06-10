@@ -1,11 +1,9 @@
-[![Build Status](https://api.travis-ci.org/typelevel/spire.png)](https://travis-ci.org/typelevel/spire/)
-[![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/typelevel/spire?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-[![codecov.io](http://codecov.io/github/typelevel/spire/coverage.svg?branch=master)](http://codecov.io/github/typelevel/spire?branch=master)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.typelevel/spire_2.11/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.typelevel/spire_2.11)
+## MiniSpire
 
-## Spire
+MiniSpire is an extraction of core typeclasses/data types from the [Spire library](https://github.com/typelevel/spire), along with the relevant imports from [Algebra](https://github.com/typelevel/algebra/), [Cats](https://github.com/typelevel/cats) and [Machinist](https://github.com/typelevel/machinist).
 
-Spire is a numeric library for Scala which is intended to be generic, fast,
-and precise.
+It reflects roughly Spire 0.16.2 and cats-kernel/algebra around the 2.0.0 milestone.
 
-See the [companion microsite](https://typelevel.org/spire/)
+It demonstrates the core architecture of Spire, is intended as a pedagogical device as well as a playground to port Spire for Scala 3.0.
+
+In particular, only a subset of the typeclasses, data types are kept. Law checking and tests are absent.
