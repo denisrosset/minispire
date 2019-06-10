@@ -100,9 +100,9 @@ lazy val publishSettings = Seq(
     publishArtifacts,
     releaseStepCommand(s"++${scala211}"),
     releaseStepCommand("coreNative/publish"),
+    releaseStepCommand("bintrayRelease"),
     setNextVersion,
     commitNextVersion,
-    releaseStepCommand("bintrayRelease"),
     pushChanges
   )
 )
