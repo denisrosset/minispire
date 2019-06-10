@@ -4,6 +4,8 @@ import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 lazy val scalaVersions: Map[String, String] =
   Map("2.11" -> "2.11.12", "2.12" -> "2.12.8", "2.13" -> "2.13.0-RC3")
 
+lazy val scala211 = scalaVersions("2.11")
+
 // Projects
 
 lazy val spire = project.in(file("."))
@@ -96,9 +98,11 @@ lazy val publishSettings = Seq(
     commitReleaseVersion,
     tagRelease,
     publishArtifacts,
-    releaseStepCommand("bintrayRelease"),
+    releaseStepCommand(s"++${scala211}"),
+    releaseStepCommand("coreNative/publish"),
     setNextVersion,
     commitNextVersion,
+    releaseStepCommand("bintrayRelease"),
     pushChanges
   )
 )
