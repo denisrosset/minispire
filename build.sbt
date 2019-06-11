@@ -2,7 +2,7 @@ import ReleaseTransformations._
 import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 
 lazy val scalaVersions: Map[String, String] =
-  Map("2.11" -> "2.11.12", "2.12" -> "2.12.8", "2.13" -> "2.13.0-RC3")
+  Map("2.11" -> "2.11.12", "2.12" -> "2.12.8", "2.13" -> "2.13.0")
 
 lazy val scala211 = scalaVersions("2.11")
 
