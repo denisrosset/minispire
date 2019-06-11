@@ -131,7 +131,9 @@ lazy val commonScalacOptions = Def.setting(
     case Some((2, v)) if v >= 13 =>
       Seq()
     case _ =>
-      Seq("-Yno-adapted-args")
+      Seq(
+        "-Yno-adapted-args",
+        "-Xfuture")
   }) ++ Seq(
     "-deprecation",
     "-encoding", "UTF-8",
@@ -140,7 +142,6 @@ lazy val commonScalacOptions = Def.setting(
     "-language:higherKinds",
     "-language:implicitConversions",
     "-language:experimental.macros",
-    "-unchecked",
-    "-Xfuture"
+    "-unchecked"
   )
 )
